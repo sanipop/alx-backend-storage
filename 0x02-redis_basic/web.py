@@ -1,36 +1,50 @@
 #!/usr/bin/env python3
-"""
-web cache and tracker
-"""
 import requests
 import redis
 from functools import wraps
+from typing import Callable
 
-store = redis.Redis()
+# Connect to Redis server
+r = redis.Redis()
 
+def cache_page(expiration: int = 10):
+    """
+    Decorator to cache the page and track URL access count.
+    """
+    def decorator(func: Callable) -> Callable:
+        @wraps(func)
+        def wrapper(url: str) -> str:
+            # Track the number of accesses to the URL
+            count_key = f"count:{url}"
+            r.incr(count_key)
 
-def count_url_access(method):
-    """ Decorator counting how many times
-    a URL is accessed """
-    @wraps(method)
-    def wrapper(url):
-        cached_key = "cached:" + url
-        cached_data = store.get(cached_key)
-        if cached_data:
-            return cached_data.decode("utf-8")
+            # Check if the page is already cached
+            cached_page = r.get(url)
+            if cached_page:
+                return cached_page.decode('utf-8')
 
-        count_key = "count:" + url
-        html = method(url)
+            # Fetch the page content
+            page_content = func(url)
 
-        store.incr(count_key)
-        store.set(cached_key, html)
-        store.expire(cached_key, 10)
-        return html
-    return wrapper
+            # Cache the page content with an expiration time
+            r.setex(url, expiration, page_content)
 
+            return page_content
+        return wrapper
+    return decorator
 
-@count_url_access
+@cache_page(expiration=10)
 def get_page(url: str) -> str:
-    """ Returns HTML content of a url """
-    res = requests.get(url)
-    return res.text
+    """
+    Fetches the HTML content of a given URL and returns it as a string.
+    """
+    response = requests.get(url)
+    return response.text
+
+if __name__ == "__main__":
+    url = "http://slowwly.robertomurray.co.uk/delay/5000/url/http://www.example.com"
+    print(get_page(url))
+    # To test the caching and counting, you can run get_page multiple times
+    # and observe the behavior.
+    print(f"Access count for {url}: {r.get(f'count:{url}').decode('utf-8')}")
+    
