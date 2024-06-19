@@ -1,42 +1,38 @@
 #!/usr/bin/env python3
-import requests
+'''A module with tools for request caching and tracking.
+'''
 import redis
+import requests
 from functools import wraps
 from typing import Callable
 
-# Connect to Redis server
-r = redis.Redis()
 
-def cache_page(expiration: int = 10):
-    """
-    Decorator to cache the page and track URL access count.
-    """
-    def decorator(func: Callable) -> Callable:
-        @wraps(func)
-        def wrapper(url: str) -> str:
-            # Track the number of accesses to the URL
-            count_key = f"count:{url}"
-            r.incr(count_key)
+redis_store = redis.Redis()
+'''The module-level Redis instance.
+'''
 
-            # Check if the page is already cached
-            cached_page = r.get(url)
-            if cached_page:
-                return cached_page.decode('utf-8')
 
-            # Fetch the page content
-            page_content = func(url)
+def data_cacher(method: Callable) -> Callable:
+    '''Caches the output of fetched data.
+    '''
+    @wraps(method)
+    def invoker(url) -> str:
+        '''The wrapper function for caching the output.
+        '''
+        redis_store.incr(f'count:{url}')
+        result = redis_store.get(f'result:{url}')
+        if result:
+            return result.decode('utf-8')
+        result = method(url)
+        redis_store.set(f'count:{url}', 0)
+        redis_store.setex(f'result:{url}', 10, result)
+        return result
+    return invoker
 
-            # Cache the page content with an expiration time
-            r.setex(url, expiration, page_content)
 
-            return page_content
-        return wrapper
-    return decorator
-
-@cache_page(expiration=10)
+@data_cacher
 def get_page(url: str) -> str:
-    """
-    Fetches the HTML content of a given URL and returns it as a string.
-    """
-    response = requests.get(url)
-    return response.text
+    '''Returns the content of a URL after caching the request's response,
+    and tracking the request.
+    '''
+    return requests.get(url).text
