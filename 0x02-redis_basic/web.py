@@ -40,11 +40,3 @@ def get_page(url: str) -> str:
     """
     response = requests.get(url)
     return response.text
-
-if __name__ == "__main__":
-    url = "http://slowwly.robertomurray.co.uk/delay/5000/url/http://www.example.com"
-    print(get_page(url))
-    # To test the caching and counting, you can run get_page multiple times
-    # and observe the behavior.
-    print(f"Access count for {url}: {r.get(f'count:{url}').decode('utf-8')}")
-    
